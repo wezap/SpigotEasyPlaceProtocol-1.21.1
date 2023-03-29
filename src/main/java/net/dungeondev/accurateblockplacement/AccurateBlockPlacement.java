@@ -13,6 +13,7 @@ import org.bukkit.Axis;
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Attachable;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Orientable;
@@ -134,7 +135,9 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 		}
 	    }
 	}
-	block.setBlockData(blockData);
+	if (blockData.isSupported(block.getLocation())) {
+	    block.setBlockData(blockData);
+	}
     }
 
     private void onBlockBuildPacket(final PacketEvent event) {
