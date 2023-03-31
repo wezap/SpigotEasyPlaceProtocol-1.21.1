@@ -25,6 +25,7 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Orientable;
 import org.bukkit.block.data.type.Bed;
+import org.bukkit.block.data.type.Chest;
 import org.bukkit.block.data.type.Comparator;
 import org.bukkit.block.data.type.Repeater;
 import org.bukkit.entity.Player;
@@ -108,8 +109,11 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 
     private void accurateBlockProtocol(BlockPlaceEvent event, int protocolValue)
     {
+	Player player = event.getPlayer();
 	Block block = event.getBlock();
+	Block clickedBlock = event.getBlockAgainst();
 	BlockData blockData = block.getBlockData();
+	BlockData clickBlockData = clickedBlock.getBlockData();
 	if (blockData instanceof Bed) {
 	    return;
 	}
@@ -144,6 +148,44 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 		}
 		if (validFaces.contains(face)) {
 		    directional.setFacing(face);
+		}
+	    }
+	    if (blockData instanceof Chest) {
+		//Merge chests if needed.
+		Chest chest = (Chest) blockData;
+		//Make sure we don't rotate a "half-double" chest!
+		chest.setType(Chest.Type.SINGLE);
+		BlockFace left = null;
+	        switch (chest.getFacing()) {
+		    case NORTH -> left = BlockFace.EAST;
+		    case WEST -> left = BlockFace.NORTH;
+		    case SOUTH -> left = BlockFace.WEST;
+		    case EAST -> left = BlockFace.SOUTH;
+		}
+		// Handle clicking on a chest in the world.
+		if (!clickedBlock.equals(block) && clickBlockData.getMaterial() == chest.getMaterial()) {
+		    Chest clickChest = (Chest) clickBlockData;
+		    if (clickChest.getType() == Chest.Type.SINGLE && chest.getFacing() == clickChest.getFacing()) {
+			BlockFace relation = block.getFace(clickedBlock);
+			if (left == relation) {
+			    chest.setType(Chest.Type.LEFT);
+			} else if (left.getOppositeFace() == relation) {
+			    chest.setType(Chest.Type.RIGHT);
+			}
+		    }
+		// Handle placing a chest normally.
+		} else if (!player.isSneaking()) {
+		    BlockData leftBlock = block.getRelative(left).getBlockData();
+		    BlockData rigthBlock = block.getRelative(left.getOppositeFace()).getBlockData();
+		    if (leftBlock.getMaterial() == chest.getMaterial() &&
+			((Chest) leftBlock).getType() == Chest.Type.SINGLE &&
+			((Chest) leftBlock).getFacing() == chest.getFacing()) {
+			chest.setType(Chest.Type.LEFT);
+		    } else if (rigthBlock.getMaterial() == chest.getMaterial() &&
+			       ((Chest) rigthBlock).getType() == Chest.Type.SINGLE &&
+			       ((Chest) rigthBlock).getFacing() == chest.getFacing()) {
+			chest.setType(Chest.Type.RIGHT);
+		    }
 		}
 	    }
 	}
@@ -184,7 +226,7 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 		}
 	    }
 	}
-	if (blockData.isSupported(block.getLocation())) {
+	if (block.canPlace(blockData)) {
 	    block.setBlockData(blockData);
 	} else {
 	    event.setCancelled(true);
