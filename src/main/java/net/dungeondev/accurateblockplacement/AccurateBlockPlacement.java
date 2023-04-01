@@ -28,6 +28,7 @@ import org.bukkit.block.data.type.Bed;
 import org.bukkit.block.data.type.Chest;
 import org.bukkit.block.data.type.Comparator;
 import org.bukkit.block.data.type.Repeater;
+import org.bukkit.block.data.type.Stairs;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -155,13 +156,7 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 		Chest chest = (Chest) blockData;
 		//Make sure we don't rotate a "half-double" chest!
 		chest.setType(Chest.Type.SINGLE);
-		BlockFace left = null;
-	        switch (chest.getFacing()) {
-		    case NORTH -> left = BlockFace.EAST;
-		    case WEST -> left = BlockFace.NORTH;
-		    case SOUTH -> left = BlockFace.WEST;
-		    case EAST -> left = BlockFace.SOUTH;
-		}
+		BlockFace left = rotateCW(chest.getFacing());
 		// Handle clicking on a chest in the world.
 		if (!clickedBlock.equals(block) && clickBlockData.getMaterial() == chest.getMaterial()) {
 		    Chest clickChest = (Chest) clickBlockData;
@@ -187,6 +182,8 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 			chest.setType(Chest.Type.RIGHT);
 		    }
 		}
+	    } else if (blockData instanceof Stairs) {
+		((Stairs) blockData).setShape(handleStairs(block, (Stairs) blockData));
 	    }
 	}
 	else if (blockData instanceof Orientable) {
@@ -231,6 +228,47 @@ public class AccurateBlockPlacement extends JavaPlugin implements Listener
 	} else {
 	    event.setCancelled(true);
 	}
+    }
+
+    private BlockFace rotateCW(BlockFace in) {
+	BlockFace out = null;
+	switch (in) {
+	    case NORTH -> out = BlockFace.EAST;
+	    case WEST -> out = BlockFace.NORTH;
+	    case SOUTH -> out = BlockFace.WEST;
+	    case EAST -> out = BlockFace.SOUTH;
+	}
+	return out;
+    }
+
+    private Stairs.Shape handleStairs(Block block, Stairs stairs) {
+	Bisected.Half half = stairs.getHalf();
+	BlockFace backFace = stairs.getFacing();
+	BlockFace frontFace = backFace.getOppositeFace();
+	BlockFace rightFace = rotateCW(backFace);
+	BlockFace leftFace = rightFace.getOppositeFace();
+	Stairs backStairs = block.getRelative(backFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(backFace).getBlockData() : null;
+	Stairs frontStairs = block.getRelative(frontFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(frontFace).getBlockData() : null;
+	Stairs leftStairs = block.getRelative(leftFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(leftFace).getBlockData() : null;
+	Stairs rightStairs = block.getRelative(rightFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(rightFace).getBlockData() : null;
+
+
+	if ((backStairs != null && backStairs.getHalf() == half && backStairs.getFacing() == leftFace) &&
+	    ! (rightStairs != null && rightStairs.getHalf() == half && rightStairs.getFacing() == backFace) ) {
+	    return Stairs.Shape.OUTER_LEFT;
+	} else if ((backStairs != null && backStairs.getHalf() == half && backStairs.getFacing() == rightFace) &&
+		    ! (leftStairs != null && leftStairs.getHalf() == half && leftStairs.getFacing() == backFace) ) {
+	    return Stairs.Shape.OUTER_RIGHT;
+	} else if ((frontStairs != null && frontStairs.getHalf() == half && frontStairs.getFacing() == leftFace) &&
+		    ! (leftStairs != null && leftStairs.getHalf() == half && leftStairs.getFacing() == backFace) ) {
+	    return Stairs.Shape.INNER_LEFT;
+	} else if ((frontStairs != null && frontStairs.getHalf() == half && frontStairs.getFacing() == rightFace) &&
+		    ! (rightStairs != null && rightStairs.getHalf() == half && rightStairs.getFacing() == backFace) ) {
+	    return Stairs.Shape.INNER_RIGHT;
+	} else {
+	    return Stairs.Shape.STRAIGHT;
+	}
+
     }
 
     private void onBlockBuildPacket(final PacketEvent event) {
