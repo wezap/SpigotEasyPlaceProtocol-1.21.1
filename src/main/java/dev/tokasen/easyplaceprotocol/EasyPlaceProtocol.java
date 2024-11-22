@@ -59,7 +59,7 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        getLogger().info("EasyPlaceProtocol loaded!");
+        getLogger().info("SpigotEasyPlaceProtocol loaded!");
         ProtocolManager protocolManager = ProtocolLibrary.getProtocolManager();
         protocolManager.addPacketListener(new PacketAdapter(this, ListenerPriority.NORMAL, PacketType.Play.Client.USE_ITEM_ON) {
             @Override
