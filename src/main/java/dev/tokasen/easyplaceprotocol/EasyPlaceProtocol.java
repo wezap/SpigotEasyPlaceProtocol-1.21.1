@@ -3,6 +3,7 @@ package dev.tokasen.easyplaceprotocol;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.network.protocol.common.custom.DiscardedPayload;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 
 import com.comphenix.protocol.PacketType;
@@ -21,7 +22,7 @@ import com.comphenix.protocol.wrappers.nbt.NbtFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
-import org.bukkit.craftbukkit.v1_21_R1.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_21_R2.entity.CraftPlayer;
 import org.bukkit.Axis;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -81,14 +82,14 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         ByteArrayOutputStream rawData = new ByteArrayOutputStream();
         DataOutputStream outputStream = new DataOutputStream(rawData);
         Object key = MinecraftKey.getConverter().getGeneric(new MinecraftKey("carpet", "hello"));
+
         try {
             StreamSerializer.getDefault().serializeVarInt(outputStream, 69);
-            StreamSerializer.getDefault().serializeString(outputStream, "SPIGOT-ABP");//MinecraftReflection.getPacketDataSerializer(Unpooled.wrappedBuffer(rawData.toByteArray()));
+            StreamSerializer.getDefault().serializeString(outputStream, "SPIGOT-ABP");
             CustomPacketPayload payload = new DiscardedPayload(
-                    (net.minecraft.resources.MinecraftKey) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
+                    (ResourceLocation) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
             sendClientBoundCustomPayloadPacket(event.getPlayer(), payload);
-        } catch (IOException ignored) {
-        }
+        } catch (IOException ignored) {}
     }
 
     @EventHandler
@@ -103,12 +104,14 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         if (packetData == null) {
             return;
         }
+
         BlockPosition packetBlock = packetData.block();
         Block block = event.getBlock();
         if (packetBlock.getX() != block.getX() || packetBlock.getY() != block.getY() || packetBlock.getZ() != block.getZ()) {
             playerPacketDataHashMap.remove(player);
             return;
         }
+
         accurateBlockProtocol(event, packetData.protocolValue());
         playerPacketDataHashMap.remove(player);
     }
@@ -119,9 +122,11 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         Block clickedBlock = event.getBlockAgainst();
         BlockData blockData = block.getBlockData();
         BlockData clickBlockData = clickedBlock.getBlockData();
+
         if (blockData instanceof Bed) {
             return;
         }
+
         if (blockData instanceof Directional directional) {
             int facingIndex = protocolValue & 0xF;
             if (facingIndex == 6) {
@@ -141,6 +146,7 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
                     directional.setFacing(face);
                 }
             }
+
             //Merge chests if needed.
             if (blockData instanceof Chest chest) {
                 //Make sure we don't rotate a "half-double" chest!
@@ -187,6 +193,7 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
                 orientable.setAxis(axis);
             }
         }
+
         protocolValue &= 0xFFFFFFF0;
         if (protocolValue >= 16) {
             if (blockData instanceof Repeater repeater) {
@@ -195,13 +202,14 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
                     repeater.setDelay(delay);
                 }
             } else if (protocolValue == 16) {
-                if (blockData instanceof Comparator) {
-                    ((Comparator) blockData).setMode(Comparator.Mode.SUBTRACT);
+                if (blockData instanceof Comparator comparator) {
+                    comparator.setMode(Comparator.Mode.SUBTRACT);
                 } else if (blockData instanceof Bisected bisected) {
                     bisected.setHalf(Bisected.Half.TOP);
                 }
             }
         }
+
         if (block.canPlace(blockData)) {
             block.setBlockData(blockData);
         } else {
@@ -230,7 +238,6 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         Stairs frontStairs = block.getRelative(frontFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(frontFace).getBlockData() : null;
         Stairs leftStairs = block.getRelative(leftFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(leftFace).getBlockData() : null;
         Stairs rightStairs = block.getRelative(rightFace).getBlockData() instanceof Stairs ? (Stairs) block.getRelative(rightFace).getBlockData() : null;
-
 
         if ((backStairs != null && backStairs.getHalf() == half && backStairs.getFacing() == leftFace) &&
                 !(rightStairs != null && rightStairs.getHalf() == half && rightStairs.getFacing() == backFace)) {
@@ -275,15 +282,17 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
     private void onCustomPayload(final PacketEvent event) {
         PacketContainer packet = event.getPacket();
         DiscardedPayload payload = (DiscardedPayload) packet.getModifier().read(0);
-        if (!(payload.b().a().equals("carpet") && payload.b().b().equals("hello"))) {
+        if (!(payload.id().getNamespace().equals("carpet") && payload.id().getPath().equals("hello"))) {
             return;
         }
+
         ByteBuf data = payload.data();
         try {
             DataInputStream in = new DataInputStream(new ByteBufInputStream(data));
             if (StreamSerializer.getDefault().deserializeVarInt(in) != 420) {
                 return;
             }
+
             Object key = MinecraftKey.getConverter().getGeneric(new MinecraftKey("carpet", "hello"));
             NbtCompound abpRule = NbtFactory.ofCompound("Rules", List.of(NbtFactory.of("Value", "true"),
                     NbtFactory.of("Manager", "carpet"),
@@ -293,21 +302,17 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
             StreamSerializer.getDefault().serializeVarInt(outputStream, 1);
             StreamSerializer.getDefault().serializeCompound(outputStream, abpRule);
             CustomPacketPayload rulePayload = new DiscardedPayload(
-                    (net.minecraft.resources.MinecraftKey) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
+                    (ResourceLocation) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
             sendClientBoundCustomPayloadPacket(event.getPlayer(), rulePayload);
-        } catch (IOException ignored) {
-        }
+        } catch (IOException ignored) {}
     }
 
     public static void sendClientBoundCustomPayloadPacket(Player player, CustomPacketPayload payload) {
         // Convert Bukkit Player to ServerPlayer
         CraftPlayer craftPlayer = (CraftPlayer) player;
-        craftPlayer.getHandle();
-        //ServerPlayer serverPlayer = craftPlayer.getHandle();
-        // Create Client boundCustomPayloadPacket
         ClientboundCustomPayloadPacket packet = new ClientboundCustomPayloadPacket(payload);
         // Send packet to player
-        ServerCommonPacketListenerImpl connection = craftPlayer.getHandle().c;
+        ServerCommonPacketListenerImpl connection = craftPlayer.getHandle().connection;
         connection.sendPacket(packet);
     }
 }
