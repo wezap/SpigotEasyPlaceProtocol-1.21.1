@@ -39,6 +39,7 @@ jobs:
       uses: SpraxDev/Action-SpigotMC@v5
       with:
         versions: 1.21.4
+        remapped: true
 
     - name: Build with Gradle Wrapper
       run: ./gradlew build
