@@ -38,7 +38,7 @@ jobs:
     - name: Install Spigot BuildTools
       uses: SpraxDev/Action-SpigotMC@v5
       with:
-        versions: 1.21.1
+        versions: 1.21.4
 
     - name: Build with Gradle Wrapper
       run: ./gradlew build

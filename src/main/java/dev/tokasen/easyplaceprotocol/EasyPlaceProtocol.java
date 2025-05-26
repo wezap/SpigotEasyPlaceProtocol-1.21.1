@@ -2,7 +2,6 @@ package dev.tokasen.easyplaceprotocol;
 
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.network.protocol.common.custom.DiscardedPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 
@@ -22,7 +21,7 @@ import com.comphenix.protocol.wrappers.nbt.NbtFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
-import org.bukkit.craftbukkit.v1_21_R2.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_21_R3.entity.CraftPlayer;
 import org.bukkit.Axis;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -49,6 +48,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,27 @@ import java.util.Set;
 public class EasyPlaceProtocol extends JavaPlugin implements Listener {
 
     private final Map<Player, PacketData> playerPacketDataHashMap = new HashMap<>();
+
+    // 預先準備 DiscardedPayload 類別、建構子與 data() 方法
+    private final Class<?> dpClass;
+    private final Constructor<?> ctorBuf, ctorBytes;
+    private final Method dataMethod;
+
+    public EasyPlaceProtocol() throws Exception {
+        dpClass = Class.forName("net.minecraft.network.protocol.common.custom.DiscardedPayload");
+        Constructor<?> cb = null, cbytes = null;
+        // 嘗試兩種建構子
+        try {
+            cb = dpClass.getConstructor(ResourceLocation.class, ByteBuf.class);
+        } catch (NoSuchMethodException ignored) {}
+        try {
+            cbytes = dpClass.getConstructor(ResourceLocation.class, byte[].class);
+        } catch (NoSuchMethodException ignored) {}
+        // data() 方法也可能回 ByteBuf 或 byte[]
+        dataMethod = dpClass.getMethod("data");
+        ctorBuf   = cb;
+        ctorBytes = cbytes;
+    }
 
     @Override
     public void onEnable() {
@@ -86,10 +108,11 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         try {
             StreamSerializer.getDefault().serializeVarInt(outputStream, 69);
             StreamSerializer.getDefault().serializeString(outputStream, "SPIGOT-ABP");
-            CustomPacketPayload payload = new DiscardedPayload(
-                    (ResourceLocation) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
+            CustomPacketPayload payload = makePayload(key, rawData.toByteArray());
             sendClientBoundCustomPayloadPacket(event.getPlayer(), payload);
-        } catch (IOException ignored) {}
+        } catch (IOException ignored) {} catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @EventHandler
@@ -218,12 +241,13 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
     }
 
     private BlockFace rotateCW(BlockFace in) {
-        BlockFace out = null;
+        BlockFace out;
         switch (in) {
             case NORTH -> out = BlockFace.EAST;
             case WEST -> out = BlockFace.NORTH;
             case SOUTH -> out = BlockFace.WEST;
             case EAST -> out = BlockFace.SOUTH;
+            default -> out = in;
         }
         return out;
     }
@@ -280,34 +304,67 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
     }
 
     private void onCustomPayload(final PacketEvent event) {
-        PacketContainer packet = event.getPacket();
-        DiscardedPayload payload = (DiscardedPayload) packet.getModifier().read(0);
-        if (!(payload.id().getNamespace().equals("carpet") && payload.id().getPath().equals("hello"))) {
-            return;
-        }
-
-        ByteBuf data = payload.data();
         try {
-            DataInputStream in = new DataInputStream(new ByteBufInputStream(data));
-            if (StreamSerializer.getDefault().deserializeVarInt(in) != 420) {
-                return;
-            }
+            PacketContainer packet = event.getPacket();
+            Object payload = packet.getModifier().read(0);  // 這裡拿到的就是 DiscardedPayload
+            // 先用反射讀 id()
+            Method idMethod = dpClass.getMethod("id");
+            Object resourceLocation = idMethod.invoke(payload);
+            Method getNamespace = resourceLocation.getClass().getMethod("getNamespace");
+            Method getPath      = resourceLocation.getClass().getMethod("getPath");
+            String ns   = (String) getNamespace.invoke(resourceLocation);
+            String path = (String) getPath.invoke(resourceLocation);
+            if (!("carpet".equals(ns) && "hello".equals(path))) return;
 
+            // 拿到包內資料
+            ByteBuf data = extractData(payload);
+            DataInputStream in = new DataInputStream(new ByteBufInputStream(data));
+            if (StreamSerializer.getDefault().deserializeVarInt(in) != 420) return;
+
+            // 準備要回傳的 NBT
             Object key = MinecraftKey.getConverter().getGeneric(new MinecraftKey("carpet", "hello"));
-            NbtCompound abpRule = NbtFactory.ofCompound("Rules", List.of(NbtFactory.of("Value", "true"),
+            NbtCompound abpRule = NbtFactory.ofCompound("Rules", List.of(
+                    NbtFactory.of("Value", "true"),
                     NbtFactory.of("Manager", "carpet"),
-                    NbtFactory.of("Rule", "accurateBlockPlacement")));
+                    NbtFactory.of("Rule", "accurateBlockPlacement")
+            ));
             ByteArrayOutputStream rawData = new ByteArrayOutputStream();
             DataOutputStream outputStream = new DataOutputStream(rawData);
             StreamSerializer.getDefault().serializeVarInt(outputStream, 1);
             StreamSerializer.getDefault().serializeCompound(outputStream, abpRule);
-            CustomPacketPayload rulePayload = new DiscardedPayload(
-                    (ResourceLocation) key, Unpooled.wrappedBuffer(rawData.toByteArray()));
+
+            // 建立並發送回傳包
+            CustomPacketPayload rulePayload = makePayload(key, rawData.toByteArray());
             sendClientBoundCustomPayloadPacket(event.getPlayer(), rulePayload);
-        } catch (IOException ignored) {}
+
+        } catch (Exception e) {
+            // 忽略錯誤或自行處理
+        }
     }
 
-    public static void sendClientBoundCustomPayloadPacket(Player player, CustomPacketPayload payload) {
+    // 用反射建立 DiscardedPayload
+    private CustomPacketPayload makePayload(Object key, byte[] raw) throws Exception {
+        if (ctorBuf != null) {
+            ByteBuf buf = Unpooled.wrappedBuffer(raw);
+            return (CustomPacketPayload) ctorBuf.newInstance(key, buf);
+        } else {
+            return (CustomPacketPayload) ctorBytes.newInstance(key, raw);
+        }
+    }
+
+    // 用反射讀取 payload 的內部資料，並統一包成 ByteBuf
+    private ByteBuf extractData(Object payload) throws Exception {
+        Object ret = dataMethod.invoke(payload);
+        if (ret instanceof ByteBuf) {
+            return (ByteBuf) ret;
+        } else if (ret instanceof byte[]) {
+            return Unpooled.wrappedBuffer((byte[]) ret);
+        } else {
+            throw new IllegalStateException("Unknown data() return type: " + ret.getClass());
+        }
+    }
+
+    private static void sendClientBoundCustomPayloadPacket(Player player, CustomPacketPayload payload) {
         // Convert Bukkit Player to ServerPlayer
         CraftPlayer craftPlayer = (CraftPlayer) player;
         ClientboundCustomPayloadPacket packet = new ClientboundCustomPayloadPacket(payload);
