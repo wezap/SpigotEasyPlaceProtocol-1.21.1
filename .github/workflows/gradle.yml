@@ -43,9 +43,6 @@ jobs:
         versions: 1.21.4
         remapped: true
 
-    - name: Restore local Maven repo (artifact .m2/repository)
-      run: mkdir -p ~/.m2/repository && cp -r ./local-m2-repo/* ~/.m2/repository/
-
     - name: Build with Gradle Wrapper
       run: ./gradlew build
 
