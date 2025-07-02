@@ -40,7 +40,7 @@ jobs:
     - name: Install Spigot BuildTools
       uses: SpraxDev/Action-SpigotMC@v5
       with:
-        versions: 1.21.4
+        versions: 1.21.1
         remapped: true
 
     - name: Restore local Maven repo (artifact .m2/repository)
