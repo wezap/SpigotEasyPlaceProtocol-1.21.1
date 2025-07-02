@@ -21,7 +21,7 @@ import com.comphenix.protocol.wrappers.nbt.NbtFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
-import org.bukkit.craftbukkit.v1_21_R3.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_21_R1.entity.CraftPlayer;
 import org.bukkit.Axis;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -59,7 +59,7 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
 
     private final Map<Player, PacketData> playerPacketDataHashMap = new HashMap<>();
 
-    // 預先準備 DiscardedPayload 類別、建構子與 data() 方法
+    // prepare the discardedpayload class, constructor, and data() method in advance.
     private final Class<?> dpClass;
     private final Constructor<?> ctorBuf, ctorBytes;
     private final Method dataMethod;
@@ -67,14 +67,14 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
     public EasyPlaceProtocol() throws Exception {
         dpClass = Class.forName("net.minecraft.network.protocol.common.custom.DiscardedPayload");
         Constructor<?> cb = null, cbytes = null;
-        // 嘗試兩種建構子
+        // two constructor implementations
         try {
             cb = dpClass.getConstructor(ResourceLocation.class, ByteBuf.class);
         } catch (NoSuchMethodException ignored) {}
         try {
             cbytes = dpClass.getConstructor(ResourceLocation.class, byte[].class);
         } catch (NoSuchMethodException ignored) {}
-        // data() 方法也可能回 ByteBuf 或 byte[]
+        //data() method may return either ByteBuf or byte[]
         dataMethod = dpClass.getMethod("data");
         ctorBuf   = cb;
         ctorBytes = cbytes;
@@ -306,8 +306,8 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
     private void onCustomPayload(final PacketEvent event) {
         try {
             PacketContainer packet = event.getPacket();
-            Object payload = packet.getModifier().read(0);  // 這裡拿到的就是 DiscardedPayload
-            // 先用反射讀 id()
+            Object payload = packet.getModifier().read(0);  // what we're getting here is a DiscardedPayload
+            // first, use reflection to read id()
             Method idMethod = dpClass.getMethod("id");
             Object resourceLocation = idMethod.invoke(payload);
             Method getNamespace = resourceLocation.getClass().getMethod("getNamespace");
@@ -316,12 +316,12 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
             String path = (String) getPath.invoke(resourceLocation);
             if (!("carpet".equals(ns) && "hello".equals(path))) return;
 
-            // 拿到包內資料
+            // retrieve the data inside the packet
             ByteBuf data = extractData(payload);
             DataInputStream in = new DataInputStream(new ByteBufInputStream(data));
             if (StreamSerializer.getDefault().deserializeVarInt(in) != 420) return;
 
-            // 準備要回傳的 NBT
+                // prepare the NBT (Named Binary Tag) data to be returned
             Object key = MinecraftKey.getConverter().getGeneric(new MinecraftKey("carpet", "hello"));
             NbtCompound abpRule = NbtFactory.ofCompound("Rules", List.of(
                     NbtFactory.of("Value", "true"),
@@ -333,16 +333,16 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
             StreamSerializer.getDefault().serializeVarInt(outputStream, 1);
             StreamSerializer.getDefault().serializeCompound(outputStream, abpRule);
 
-            // 建立並發送回傳包
+            // Create and send back the response packet
             CustomPacketPayload rulePayload = makePayload(key, rawData.toByteArray());
             sendClientBoundCustomPayloadPacket(event.getPlayer(), rulePayload);
 
         } catch (Exception e) {
-            // 忽略錯誤或自行處理
+            // ignore errors or handle them internally
         }
     }
 
-    // 用反射建立 DiscardedPayload
+    // use reflection to create a DiscardedPayload instance
     private CustomPacketPayload makePayload(Object key, byte[] raw) throws Exception {
         if (ctorBuf != null) {
             ByteBuf buf = Unpooled.wrappedBuffer(raw);
@@ -352,7 +352,7 @@ public class EasyPlaceProtocol extends JavaPlugin implements Listener {
         }
     }
 
-    // 用反射讀取 payload 的內部資料，並統一包成 ByteBuf
+    // use reflection to read the internal payload data and uniformly wrap it into a ByteBuf
     private ByteBuf extractData(Object payload) throws Exception {
         Object ret = dataMethod.invoke(payload);
         if (ret instanceof ByteBuf) {
