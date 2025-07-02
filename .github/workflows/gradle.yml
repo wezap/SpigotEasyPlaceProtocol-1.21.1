@@ -14,8 +14,12 @@ on:
         - debug
       environment:
         description: 'Environment to run tests against'
-        type: environment
         required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
 
 jobs:
   build:
